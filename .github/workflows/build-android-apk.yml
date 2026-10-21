@@ -54,6 +54,12 @@ jobs:
       - name: Vérifier la version web
         run: cmp index.html android-wrapper/www/index.html
 
+      - name: Accepter les licences Android
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses || true
+
       - name: Configurer Android SDK
         uses: android-actions/setup-android@v3
         with:
