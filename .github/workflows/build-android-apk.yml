@@ -57,8 +57,9 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Accepter les licences Android
-        run: | set +o pipefail
-        yes | sdkmanager --licences || true
+        run: |
+         set +o pipefail
+         yes | sdkmanager --licenses || true
 
       - name: Installer les outils Android
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
