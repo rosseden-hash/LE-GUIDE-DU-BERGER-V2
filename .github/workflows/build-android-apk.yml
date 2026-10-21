@@ -1,0 +1,96 @@
+name: Construire APK Android — V27
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Extraire le projet du ZIP
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+          test -n "$ZIP_FILE"
+          unzip -t "$ZIP_FILE"
+          mkdir extracted
+          unzip -oq "$ZIP_FILE" -d extracted
+          PROJECT_DIR="extracted/guide_du_berger_v27"
+          test -d "$PROJECT_DIR"
+          test -f "$PROJECT_DIR/index.html"
+          rsync -a --exclude='.github' "$PROJECT_DIR/" ./
+          test -f scripts/validate-project.cjs
+          test -f android-wrapper/package.json
+
+      - name: Vérifier le projet
+        run: node scripts/validate-project.cjs
+
+      - name: Tester les sauvegardes
+        run: node scripts/test-backup-validation.cjs
+
+      - name: Vérifier la version web
+        run: cmp index.html android-wrapper/www/index.html
+
+      - name: Configurer Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accepter les licences Android
+        run: yes | sdkmanager --licenses
+
+      - name: Installer les outils Android
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Installer les dépendances et préparer Android
+        working-directory: android-wrapper
+        run: |
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx capacitor-assets generate --android
+          npx cap sync android
+
+      - name: Compiler l'APK
+        working-directory: android-wrapper
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Vérifier l'APK
+        run: |
+          set -euxo pipefail
+          APK="android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          sha256sum "$APK" > "$APK.sha256"
+
+      - name: Publier l'APK à télécharger
+        uses: actions/upload-artifact@v4
+        with:
+          name: LE-GUIDE-DU-BERGER-V27-debug-APK
+          path: |
+            android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk
+            android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
